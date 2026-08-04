@@ -46,7 +46,7 @@ Expected baseline at handoff:
 
 - `npm run check`: pass;
 - `npm test`: 198 tests, 196 pass, 2 skipped when `zip` is unavailable;
-- Gateway tests: 114/114 pass.
+- Gateway tests: 115/115 pass.
 
 ## 3. CLI contract
 
@@ -341,7 +341,7 @@ Same key + same fingerprint reuses the result; same key + different fingerprint 
 |---|---|
 | `GATEWAY_UNAVAILABLE` / `-32050` | CLI cannot reach central Gateway |
 | `TARGET_UNAVAILABLE` / `-32001` | no selected target online |
-| `TARGET_AMBIGUOUS` / `-32004` | multiple candidates without explicit target |
+| `TARGET_AMBIGUOUS` / `-32001` | multiple candidates without explicit target (note: shares the `-32001` JSON-RPC code with `TARGET_UNAVAILABLE`; distinguish via `data.code === 'TARGET_AMBIGUOUS'`) |
 | `GENERATION_MISMATCH` / `-32002` | stale Editor connection |
 | `COMMAND_DISPATCH_FAILED` / `-32003` | command transport/correlation failure |
 | `PRIMARY_WRITER_REQUIRED` / `-32013` | mutation target is read-only |
@@ -417,6 +417,9 @@ Inspect `cocos_lock_status`, `cocos_audit` and active jobs. A disconnected owner
 ## 14. Known limitations and extension points
 
 - Gateway state is local process state; no distributed lock or HA.
+- The extension launch lock (`acquireLaunchLock`) is a flag file with no dead-PID reclamation: if an Editor is killed between acquiring the lock and releasing it, the stale lock file blocks cold starts until removed manually. The launcher does not consult ownership/PID state before spawning.
+- `isProcessAlive` treats `EPERM` as "alive"; after OS PID reuse a recycled PID can be reported healthy, so dead-PID detection is best-effort, not authoritative.
+- `editorInstanceId` is derived from the project path hash, so two Editors opening the same project produce the same ID and rely on `generation` to avoid clobbering each other's registration.
 - Revision provider is currently Gateway-managed; a future provider can read actual file mtime/hash, scene asset revision and asset metadata.
 - Arbitrary JavaScript cannot be statically classified, so it remains editor-exclusive.
 - Cancellation cannot forcibly interrupt every existing Cocos tool; it is protocol-level and best-effort for the underlying tool.

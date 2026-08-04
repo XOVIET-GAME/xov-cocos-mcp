@@ -1,0 +1,48 @@
+{
+  "root": true,
+  "env": {
+    "node": true,
+    "es2022": true,
+    "browser": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "script"
+  },
+  "globals": {
+    "Editor": "readonly",
+    "editor": "readonly",
+    "require": "readonly",
+    "module": "readonly",
+    "exports": "readonly",
+    "process": "readonly",
+    "Buffer": "readonly",
+    "console": "readonly",
+    "setTimeout": "readonly",
+    "clearTimeout": "readonly",
+    "setInterval": "readonly",
+    "clearInterval": "readonly",
+    "URL": "readonly",
+    "fetch": "readonly"
+  },
+  "rules": {
+    "no-undef": "error",
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "no-redeclare": "error",
+    "no-dupe-keys": "error",
+    "no-unreachable": "error",
+    "no-cond-assign": "error",
+    "no-constant-condition": ["error", { "checkLoops": false }],
+    "no-debugger": "error",
+    "no-empty": ["error", { "allowEmptyCatch": true }],
+    "valid-typeof": "error",
+    "no-use-before-define": ["error", { "functions": false, "classes": true, "variables": false }]
+  },
+  "ignorePatterns": [
+    "node_modules/",
+    "temp/",
+    "library/",
+    "Library/",
+    "**/i18n/*.js"
+  ]
+}
