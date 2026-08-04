@@ -6,9 +6,10 @@ const http = require('http');
 const https = require('https');
 const path = require('path');
 
-const DEFAULT_URL = 'http://127.0.0.1:8765/';
+const DEFAULT_URL = 'http://127.0.0.1:8787/mcp';
 const DEFAULT_TIMEOUT_SECONDS = 120;
 const ACCEPT_HEADER = 'application/json, text/event-stream';
+const GATEWAY_UNAVAILABLE_CODE = -32050;
 
 async function main() {
   const args = process.argv.slice(2);
@@ -23,14 +24,23 @@ async function main() {
     return 0;
   }
 
-  const urlText = getOption(args, '--url')
-    || process.env.FUNPLAY_COCOS_MCP_URL
+  const command = parseCommand(args);
+  if (command.kind === 'invalid') {
+    console.error(command.message);
+    return 2;
+  }
+  const optionUrl = getOption(args, '--url');
+  const gatewayUrl = process.env.FUNPLAY_COCOS_GATEWAY_URL;
+  const legacyUrl = process.env.FUNPLAY_COCOS_MCP_URL;
+  const urlText = optionUrl
+    || gatewayUrl
+    || legacyUrl
     || DEFAULT_URL;
   const timeoutText = getOption(args, '--timeout-seconds')
     || process.env.FUNPLAY_COCOS_MCP_TIMEOUT_SECONDS
     || String(DEFAULT_TIMEOUT_SECONDS);
 
-  const endpoint = parseEndpoint(urlText);
+  const endpoint = parseEndpoint(urlText, { defaultPath: optionUrl || legacyUrl ? '/' : '/mcp' });
   if (!endpoint) {
     console.error(`Invalid --url value: ${urlText}`);
     return 2;
@@ -42,22 +52,148 @@ async function main() {
     return 2;
   }
 
-  console.error(`[Funplay Cocos MCP] Bridging stdio to ${endpoint.href}`);
+  const timeoutMs = timeoutSeconds * 1000;
+  const authToken = getOption(args, '--token') || process.env.FUNPLAY_COCOS_GATEWAY_TOKEN || '';
+
+  if (command.kind === 'targets-list') {
+    return runTargetCommand({ endpoint, timeoutMs, targetId: '', authToken });
+  }
+  if (command.kind === 'target-health') {
+    return runTargetCommand({ endpoint, timeoutMs, targetId: command.targetId, authToken });
+  }
+  if (command.kind === 'call') {
+    return runOneShotCall({
+      endpoint,
+      timeoutMs,
+      authToken,
+      toolName: command.toolName,
+      argumentsText: command.argumentsText,
+      targetId: command.targetId,
+    });
+  }
+
+  console.error(`[Funplay Cocos MCP] Bridging stdio to central Gateway ${endpoint.href}`);
   await bridgeStdioToHttp({
     input: process.stdin,
     output: process.stdout,
     endpoint,
-    timeoutMs: timeoutSeconds * 1000
+    timeoutMs,
+    authToken,
   });
   return 0;
 }
 
-async function bridgeStdioToHttp({ input, output, endpoint, timeoutMs }) {
+function parseCommand(args) {
+  const index = firstPositionalIndex(args);
+  const first = index >= 0 ? args[index] : '';
+  if (!first || first.toLowerCase() === 'mcp') {
+    return { kind: 'mcp' };
+  }
+  if (first.toLowerCase() === 'targets') {
+    if (args[index + 1] && args[index + 1].toLowerCase() === 'list') {
+      return { kind: 'targets-list' };
+    }
+    return { kind: 'invalid', message: 'Usage: targets list' };
+  }
+  if (first.toLowerCase() === 'target') {
+    if (args[index + 1] && args[index + 1].toLowerCase() === 'health' && args[index + 2]) {
+      return { kind: 'target-health', targetId: args[index + 2] };
+    }
+    return { kind: 'invalid', message: 'Usage: target health <targetId>' };
+  }
+  if (first.toLowerCase() === 'call') {
+    const toolName = args[index + 1] && !args[index + 1].startsWith('-') ? args[index + 1] : '';
+    const argumentsText = args[index + 2] && !args[index + 2].startsWith('-') ? args[index + 2] : '{}';
+    if (!toolName) return { kind: 'invalid', message: 'Usage: call <toolName> [jsonArguments] [--target <targetId>]' };
+    return { kind: 'call', toolName, argumentsText, targetId: getOption(args, '--target') };
+  }
+  return { kind: 'invalid', message: `Unknown command: ${first}` };
+}
+
+function firstPositionalIndex(args) {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg.startsWith('-')) return index;
+    if (arg === '--url' || arg === '--timeout-seconds' || arg === '--token' || arg === '--target') index += 1;
+  }
+  return -1;
+}
+
+async function runOneShotCall({ endpoint, timeoutMs, authToken, toolName, argumentsText, targetId }) {
+  let toolArguments;
+  try {
+    toolArguments = JSON.parse(argumentsText || '{}');
+    if (!toolArguments || typeof toolArguments !== 'object' || Array.isArray(toolArguments)) throw new Error('arguments must be a JSON object');
+  } catch (error) {
+    console.error(`Invalid JSON arguments: ${error.message}`);
+    return 2;
+  }
+  let sessionId = '';
+  try {
+    const initialize = await postJsonRpc(endpoint, JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'cli-initialize',
+      method: 'initialize',
+      params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'cocos-cli', version: readPackageVersion() } },
+    }), { timeoutMs, sessionId: '', authToken });
+    sessionId = initialize.headers['mcp-session-id'] || '';
+    const response = await postJsonRpc(endpoint, JSON.stringify({
+      jsonrpc: '2.0',
+      id: 'cli-call',
+      method: 'tools/call',
+      params: { name: toolName, arguments: toolArguments, ...(targetId ? { targetId } : {}) },
+    }), { timeoutMs, sessionId, authToken });
+    if (response.body.trim()) process.stdout.write(response.body + '\n');
+    return response.statusCode >= 200 && response.statusCode < 300 ? 0 : 1;
+  } catch (error) {
+    console.error(formatGatewayUnavailable(error, endpoint));
+    return 1;
+  } finally {
+    if (sessionId) await deleteSession(endpoint, { timeoutMs, sessionId, authToken }).catch(() => {});
+  }
+}
+
+async function runTargetCommand({ endpoint, timeoutMs, targetId, authToken }) {
+  if (!targetId && endpoint.pathname !== '/mcp') {
+    endpoint.pathname = '/mcp';
+  }
+  const healthEndpoint = new URL(endpoint.href);
+  healthEndpoint.pathname = '/health';
+  healthEndpoint.search = targetId ? `?targetId=${encodeURIComponent(targetId)}` : '';
+  try {
+    const response = await getJson(healthEndpoint, { timeoutMs, authToken });
+    if (response.statusCode < 200 || response.statusCode >= 300 || !response.body) {
+      throw gatewayUnavailable(healthEndpoint, `Gateway returned HTTP ${response.statusCode}.`);
+    }
+    const payload = response.body;
+    if (targetId) {
+      const target = payload.target || (Array.isArray(payload.targets)
+        ? payload.targets.find((item) => item.targetId === targetId || item.editorInstanceId === targetId)
+        : null);
+      if (!target) {
+        console.error(`Target not found: ${targetId}`);
+        return 1;
+      }
+      process.stdout.write(`${JSON.stringify(target)}\n`);
+      return 0;
+    }
+    process.stdout.write(`${JSON.stringify(payload.targets || [])}\n`);
+    return 0;
+  } catch (error) {
+    console.error(formatGatewayUnavailable(error, healthEndpoint));
+    return 1;
+  }
+}
+
+async function bridgeStdioToHttp({ input, output, endpoint, timeoutMs, authToken }) {
   let sessionId = '';
 
   while (true) {
     const message = await readMessage(input);
     if (message === null) {
+      if (sessionId && endpoint.pathname === '/mcp') {
+        await deleteSession(endpoint, { timeoutMs, sessionId, authToken }).catch(() => {});
+      }
       return;
     }
 
@@ -74,7 +210,8 @@ async function bridgeStdioToHttp({ input, output, endpoint, timeoutMs }) {
     try {
       const response = await postJsonRpc(endpoint, message, {
         timeoutMs,
-        sessionId
+        sessionId,
+        authToken
       });
 
       const nextSessionId = response.headers['mcp-session-id'];
@@ -98,15 +235,36 @@ async function bridgeStdioToHttp({ input, output, endpoint, timeoutMs }) {
         await writeJsonRpcError(output, requestId, -32000, messageText);
       }
     } catch (error) {
-      console.error(`[Funplay Cocos MCP] ${error.message}`);
+      console.error(`[Funplay Cocos MCP] ${formatGatewayUnavailable(error, endpoint)}`);
       if (requestId !== null) {
-        await writeJsonRpcError(output, requestId, -32000, `Proxy transport error: ${error.message}`);
+        await writeJsonRpcError(output, requestId, GATEWAY_UNAVAILABLE_CODE, formatGatewayUnavailable(error, endpoint));
       }
     }
   }
 }
 
-function postJsonRpc(endpoint, body, { timeoutMs, sessionId }) {
+function deleteSession(endpoint, { timeoutMs, sessionId, authToken }) {
+  return new Promise((resolve, reject) => {
+    const client = endpoint.protocol === 'https:' ? https : http;
+    const request = client.request(endpoint, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        'Mcp-Session-Id': sessionId,
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      timeout: timeoutMs,
+    }, (response) => {
+      response.resume();
+      response.on('end', resolve);
+    });
+    request.on('timeout', () => request.destroy(new Error('Session delete timed out.')));
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+function postJsonRpc(endpoint, body, { timeoutMs, sessionId, authToken }) {
   return new Promise((resolve, reject) => {
     const client = endpoint.protocol === 'https:' ? https : http;
     const request = client.request(
@@ -117,6 +275,7 @@ function postJsonRpc(endpoint, body, { timeoutMs, sessionId }) {
           Accept: ACCEPT_HEADER,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           ...(sessionId ? { 'Mcp-Session-Id': sessionId } : {})
         },
         timeout: timeoutMs
@@ -137,21 +296,67 @@ function postJsonRpc(endpoint, body, { timeoutMs, sessionId }) {
     request.on('timeout', () => {
       request.destroy(new Error(`HTTP request timed out after ${timeoutMs / 1000} seconds.`));
     });
-    request.on('error', reject);
+    request.on('error', (error) => reject(gatewayUnavailable(endpoint, error.message)));
     request.end(body);
   });
 }
 
-function parseEndpoint(value) {
+function getJson(endpoint, { timeoutMs, authToken }) {
+  return new Promise((resolve, reject) => {
+    const client = endpoint.protocol === 'https:' ? https : http;
+    const request = client.request(endpoint, {
+      method: 'GET',
+      headers: { Accept: 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+      timeout: timeoutMs
+    }, (response) => {
+      const chunks = [];
+      response.on('data', (chunk) => chunks.push(chunk));
+      response.on('end', () => {
+        const bodyText = Buffer.concat(chunks).toString('utf8');
+        let body = null;
+        try {
+          body = bodyText ? JSON.parse(bodyText) : null;
+        } catch (error) {
+          reject(gatewayUnavailable(endpoint, `Invalid Gateway JSON response: ${error.message}`));
+          return;
+        }
+        resolve({ statusCode: response.statusCode || 0, body, text: bodyText });
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error(`HTTP request timed out after ${timeoutMs / 1000} seconds.`)));
+    request.on('error', (error) => reject(gatewayUnavailable(endpoint, error.message)));
+    request.end();
+  });
+}
+
+function parseEndpoint(value, { defaultPath = '/' } = {}) {
   try {
     const endpoint = new URL(value);
     if (endpoint.protocol !== 'http:' && endpoint.protocol !== 'https:') {
       return null;
     }
+    if (!endpoint.pathname || endpoint.pathname === '/') {
+      endpoint.pathname = defaultPath;
+    }
     return endpoint;
   } catch (error) {
     return null;
   }
+}
+
+function gatewayUnavailable(endpoint, detail) {
+  const error = new Error(detail || 'Gateway is unavailable.');
+  error.code = 'GATEWAY_UNAVAILABLE';
+  error.endpoint = endpoint;
+  return error;
+}
+
+function formatGatewayUnavailable(error, endpoint) {
+  const detail = error && error.code === 'GATEWAY_UNAVAILABLE'
+    ? error.message
+    : (error && error.message) || 'Gateway is unavailable.';
+  const address = endpoint && endpoint.href ? endpoint.href : 'the configured Gateway';
+  return `GATEWAY_UNAVAILABLE: ${detail} Central Gateway: ${address}. Open a Cocos Editor with the extension active.`;
 }
 
 function getRequestId(value) {
@@ -332,16 +537,25 @@ function readPackageVersion() {
 }
 
 function printHelp() {
-  console.error('funplay-cocos-mcp');
-  console.error('Bridges stdio MCP traffic to a local Cocos Creator HTTP MCP server.');
+  console.error('cocos-cli (funplay-cocos-mcp compatibility name)');
+  console.error('Client-only CLI for the central Cocos Gateway.');
+  console.error();
+  console.error('Commands:');
+  console.error('  mcp                              Bridge stdio MCP traffic (default).');
+  console.error('  targets list                     List registered Editor targets.');
+  console.error('  target health <targetId>         Show one registered target.');
+  console.error('  call <tool> [json] [--target id] Call one tool through the Gateway.');
   console.error();
   console.error('Options:');
-  console.error('  --url <http://127.0.0.1:8765/>   Cocos MCP HTTP endpoint.');
+  console.error('  --url <http://127.0.0.1:8787/mcp> Central Gateway MCP endpoint.');
   console.error('  --timeout-seconds <120>           HTTP timeout per request.');
+  console.error('  --token <value>                   Optional Gateway bearer token.');
   console.error('  --version                         Print the proxy version.');
   console.error('  --help                            Show this help.');
   console.error();
   console.error('Environment:');
+  console.error('  FUNPLAY_COCOS_GATEWAY_URL');
+  console.error('  FUNPLAY_COCOS_GATEWAY_TOKEN');
   console.error('  FUNPLAY_COCOS_MCP_URL');
   console.error('  FUNPLAY_COCOS_MCP_TIMEOUT_SECONDS');
 }
@@ -354,3 +568,10 @@ if (require.main === module) {
     process.exitCode = 1;
   });
 }
+
+module.exports = {
+  main,
+  parseCommand,
+  parseEndpoint,
+  bridgeStdioToHttp,
+};

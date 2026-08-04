@@ -13,8 +13,10 @@ const {
   getCocosVersion,
   hasRuntimeConfigChanges,
 } = require('./lib/config');
-const { McpServer } = require('./lib/server');
 const { createToolRegistry } = require('./lib/tool-registry');
+const { GatewayClient } = require('./lib/extension/gateway-client');
+const { createHttpControlTransport, createWebSocketControlTransport } = require('./lib/gateway/transport');
+const { createEditorCommandExecutor } = require('./lib/extension/editor-command-executor');
 const { ResourceProvider } = require('./lib/resources');
 const { PromptProvider } = require('./lib/prompts');
 const { InteractionLog } = require('./lib/interaction-log');
@@ -33,7 +35,8 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 class ExtensionService {
   constructor() {
     this.config = null;
-    this.server = null;
+    this.gatewayClient = null;
+    this.commandExecutor = null;
     this.toolRegistry = null;
     this.resourceProvider = null;
     this.promptProvider = null;
@@ -62,7 +65,7 @@ class ExtensionService {
     this.reloadRuntime();
     let result;
     if (this.config.autostart) {
-      this.log('info', 'Autostart is enabled, starting MCP server.');
+      this.log('info', 'Autostart is enabled, connecting this Editor to the central Gateway.');
       result = this.startServer();
     } else {
       this.log('info', 'Autostart is disabled. MCP server is idle.');
@@ -77,11 +80,9 @@ class ExtensionService {
 
   unload() {
     this.log('info', 'Extension unloading...');
-    if (this.server) {
-      this.server.stop();
-      this.server = null;
-    }
-    this.log('info', 'Extension unloaded.');
+    return this.stopServer()
+      .catch((error) => this.log('warn', `Gateway disconnect during unload failed: ${error.message}`))
+      .finally(() => this.log('info', 'Extension unloaded.'));
   }
 
   openPanel(panelName) {
@@ -101,7 +102,7 @@ class ExtensionService {
     this.runtimeLog = new RuntimeLog(this.config.maxInteractionLogEntries);
     this.log(
       'info',
-      `Runtime config loaded: host=${this.config.host}, port=${this.config.port}, ` +
+      `Runtime config loaded: gateway=${this.config.gatewayUrl}, ` +
       `profile=${this.config.toolProfile}, autostart=${this.config.autostart}`
     );
     const sceneBridge = {
@@ -142,40 +143,62 @@ class ExtensionService {
   }
 
   async startServer() {
-    if (this.server && this.server.isRunning()) {
-      this.log('info', `Start requested but MCP server is already running at ${this.getStatus().url}`);
+    if (this.gatewayClient && this.gatewayClient.state.registered) {
+      this.log('info', `Start requested but Gateway connection is already active at ${this.getStatus().url}`);
       return this.getStatus();
     }
 
-    this.log('info', 'Starting MCP server...');
+    this.log('info', 'Connecting Editor extension to central Gateway...');
     this.reloadRuntime();
-    this.server = new McpServer({
-      config: this.config,
-      interactionLog: this.interactionLog,
-      runtimeLog: this.runtimeLog,
+    this.commandExecutor = createEditorCommandExecutor({
       toolRegistry: this.toolRegistry,
-      resourceProvider: this.resourceProvider,
-      promptProvider: this.promptProvider,
-      serverName: `Funplay Cocos MCP - ${getProjectName()}`,
-      serverVersion: manifest.version || '0.0.0',
-      projectName: getProjectName(),
-      projectIdentity: getProjectIdentity(),
+      getStatus: () => this.getStatus(),
+      logger: { log: (level, message) => this.log(level, message) },
     });
-
-    await this.server.start();
-    this.log('info', `MCP server started at ${this.getStatus().url}`);
-    this.log('info', `If this tool saves you time, please consider giving it a Star on GitHub: ${REPOSITORY_URL}`);
+    const wsAvailable = typeof globalThis.WebSocket === 'function';
+    const authToken = process.env.COCOS_GATEWAY_AUTH_TOKEN || '';
+    const transport = wsAvailable
+      ? createWebSocketControlTransport({ WebSocket: globalThis.WebSocket, authToken })
+      : createHttpControlTransport({ authToken });
+    if (!wsAvailable) {
+      this.log('warn', 'WebSocket is unavailable; using lifecycle-only HTTP transport. Tool forwarding requires Cocos WebSocket support.');
+    }
+    this.gatewayClient = new GatewayClient({
+      gatewayUrl: this.config.gatewayUrl,
+      authToken,
+      transport,
+      autoStart: true,
+      ownerExtensionId: EXTENSION_NAME,
+      projectId: getProjectIdentity(),
+      cocosVersion: getCocosVersion(),
+      capabilities: ['scene', 'asset', 'preview', 'screenshot', 'tools/list'],
+      metadata: { projectName: getProjectName(), projectPath: getProjectPath() },
+      logger: { log: (level, message) => this.log(level, message) },
+      onCommandRequest: (request) => this.commandExecutor.execute(request),
+      onCommandCancel: (requestId) => this.commandExecutor.cancel(requestId),
+      onToolsList: () => this.toolRegistry.listTools(),
+    });
+    try {
+      await this.gatewayClient.ensure();
+    } catch (error) {
+      await this.gatewayClient.close().catch(() => {});
+      this.gatewayClient = null;
+      this.commandExecutor = null;
+      throw error;
+    }
+    this.log('info', `Editor registered with central Gateway at ${this.getStatus().url}`);
     return this.getStatus();
   }
 
   async stopServer() {
     this.log('info', 'Stop requested.');
-    if (this.server) {
-      await this.server.stop();
-      this.server = null;
-      this.log('info', 'MCP server stopped.');
+    if (this.gatewayClient) {
+      await this.gatewayClient.close();
+      this.gatewayClient = null;
+      this.commandExecutor = null;
+      this.log('info', 'Editor unregistered from central Gateway.');
     } else {
-      this.log('info', 'Stop requested but MCP server was not running.');
+      this.log('info', 'Stop requested but Gateway connection was not active.');
     }
     return this.getStatus();
   }
@@ -184,38 +207,37 @@ class ExtensionService {
     this.log('info', 'Restart requested.');
     await this.stopServer();
     const status = await this.startServer();
-    this.log('info', `Restart completed. MCP server running=${status.running}, url=${status.url}`);
+    this.log('info', `Restart completed. Gateway connected=${status.connected}, url=${status.url}`);
     return status;
   }
 
   getEffectiveServerConnection() {
-    const port = this.server && this.server.isRunning() && typeof this.server.getPort === 'function'
-      ? this.server.getPort()
-      : this.config.port;
+    const gatewayUrl = this.config && this.config.gatewayUrl
+      ? this.config.gatewayUrl
+      : 'http://127.0.0.1:8787/mcp';
+    const parsed = new URL(gatewayUrl);
     return {
-      host: this.config.host,
-      port,
-      url: `http://${this.config.host}:${port}/`,
+      host: parsed.hostname,
+      port: Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80)),
+      url: parsed.toString(),
     };
   }
 
   getStatus() {
     const effective = this.getEffectiveServerConnection();
-    const fallbackInfo = this.server && this.server.isRunning() && typeof this.server.getPortFallbackInfo === 'function'
-      ? this.server.getPortFallbackInfo()
-      : null;
-    const attachInfo = this.server && this.server.isRunning() && typeof this.server.getAttachInfo === 'function'
-      ? this.server.getAttachInfo()
-      : null;
+    const gatewayState = this.gatewayClient ? this.gatewayClient.state : null;
     return {
-      running: Boolean(this.server && this.server.isRunning()),
-      attachedToExisting: Boolean(attachInfo),
-      attachInfo,
-      host: this.config.host,
+      running: Boolean(gatewayState && gatewayState.registered),
+      connected: Boolean(gatewayState && gatewayState.connected),
+      registered: Boolean(gatewayState && gatewayState.registered),
+      gatewayState,
+      attachedToExisting: Boolean(gatewayState && gatewayState.registered),
+      attachInfo: null,
+      host: effective.host,
       port: effective.port,
-      requestedPort: this.config.port,
-      portFallbackActive: Boolean(fallbackInfo),
-      portFallbackInfo: fallbackInfo,
+      requestedPort: effective.port,
+      portFallbackActive: false,
+      portFallbackInfo: null,
       toolProfile: this.config.toolProfile,
       enabledTools: this.config.enabledTools,
       disabledTools: this.config.disabledTools,
@@ -479,6 +501,10 @@ class ExtensionService {
       preview: this.formatClientTargetPreview(target),
     }));
     const baseUrl = url.replace(/\/$/, '');
+    const gatewayRoot = new URL(url);
+    gatewayRoot.pathname = '/';
+    gatewayRoot.search = '';
+    gatewayRoot.hash = '';
     return {
       url,
       codex: `[mcp_servers.funplay_cocos]\nurl = "${url}"\n`,
@@ -491,9 +517,9 @@ class ExtensionService {
       }, null, 2),
       targets,
       curl: {
-        health: `curl ${baseUrl}/health`,
-        tools: `curl ${baseUrl}/tools`,
-        catalog: `curl ${baseUrl}/tools?catalog=1`,
+        health: `curl ${gatewayRoot.toString()}health`,
+        tools: `curl ${baseUrl}`,
+        catalog: `curl ${baseUrl}`,
       },
     };
   }
@@ -562,6 +588,9 @@ class ExtensionService {
     const nextConfig = {
       host: partialConfig && partialConfig.host ? String(partialConfig.host) : this.config.host,
       port: Number.isInteger(nextPort) && nextPort > 0 && nextPort <= 65535 ? nextPort : this.config.port,
+      gatewayUrl: partialConfig && partialConfig.gatewayUrl
+        ? String(partialConfig.gatewayUrl)
+        : this.config.gatewayUrl,
       toolProfile: nextProfile,
       enabledTools: normalizeList(partialConfig && partialConfig.enabledTools, this.config.enabledTools),
       disabledTools: normalizeList(partialConfig && partialConfig.disabledTools, this.config.disabledTools),
@@ -601,7 +630,7 @@ class ExtensionService {
 
     const configPath = this.config.configPath;
     fs.writeFileSync(configPath, JSON.stringify(nextConfig, null, 2) + '\n', 'utf8');
-    const wasRunning = Boolean(this.server && this.server.isRunning());
+    const wasRunning = Boolean(this.gatewayClient && this.gatewayClient.state.registered);
     const runtimeConfigChanged = hasRuntimeConfigChanges(this.config, nextConfig);
     const requiresRestart = wasRunning && runtimeConfigChanged;
     if (requiresRestart) {
