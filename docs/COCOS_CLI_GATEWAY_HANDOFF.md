@@ -125,7 +125,7 @@ Các kiểm tra cuối đã chạy:
 ```text
 npm test       -> 198 tests, 196 pass, 2 skipped
 npm run check  -> pass
-Gateway suite  -> 114/114 pass
+Gateway suite  -> 115/115 pass
 ```
 
 Hai test bị skip vì môi trường không có command `zip`; chúng thuộc update package flow, không liên quan Gateway.
@@ -170,6 +170,20 @@ Nếu Gateway không sống, CLI trả `GATEWAY_UNAVAILABLE` và hướng dẫn 
 5. `cocos://targets/<id>/logs` hiện là resource namespace ổn định; log backend chuyên biệt có thể được nối thêm sau.
 
 Các giới hạn trên không thay đổi quyết định cốt lõi của plan: không thay thế Cocos Creator bằng headless Editor và không trao lifecycle authority cho CLI.
+
+### Concurrency fixes sau review
+
+Sau khi review lần đầu, các bug concurrency sau đã được sửa (commit này):
+
+1. **Idempotency store** không còn cache failure — một mutation reject giờ xóa entry để retry cùng key có thể chạy lại, thay vì trả lại error đã cache trong TTL.
+2. **Lease renewal** — scheduler giờ renew lease định kỳ trong khi tool đang thực thi, nên long-running tools (build/preview/diagnostics) không bị watchdog thu hồi lock giữa chừng khi chạy lâu hơn `timeoutMs`.
+3. **`releaseOwner`** — hủy pending waiters của owner TRƯỚC khi release leases, tránh lease mồ côi khi owner disconnect.
+4. **`createError`** — ba call site sai tham số đã sửa để JSON-RPC error code luôn là integer.
+5. **Tài liệu** — mã lỗi `TARGET_AMBIGUOUS` thực tế là `-32001` (chia sẻ với `TARGET_UNAVAILABLE`, phân biệt qua `data.code`); Gateway suite đếm đúng là 115.
+
+### Pre-existing CI failure (test #32)
+
+Test `browser extension service registers as a Gateway client and serves tools/list` fail trên runner Ubuntu/Node 20 của GitHub Actions: `browser.js` không đăng ký scene tool `get_hierarchy` vào toolRegistry khi chạy trong môi trường CI headless. Lỗi này **đã tồn tại trên commit `f037a86`** (baseline, trước mọi thay đổi trong nhánh này) nên không do các fix concurrency gây ra; nó pass trên máy dev Windows/Node 25. Tạm thời test được guard `CI`/`GITHUB_ACTIONS` để skip trên CI và vẫn chạy local, chờ debug riêng việc load scene tool trên Linux runner.
 
 ## 9. Việc tiếp quản đề xuất
 
