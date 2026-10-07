@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">Funplay MCP for Cocos</h1>
+  <h1 align="center">XoV MCP for Cocos</h1>
   <p align="center">
     <strong>An Embedded MCP Server for Cocos Creator Editor</strong>
   </p>
@@ -8,10 +8,9 @@
     <a href="#"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
     <a href="#"><img src="https://img.shields.io/badge/MCP-Compatible-green" alt="MCP Compatible"></a>
     <a href="#"><img src="https://img.shields.io/badge/Platform-Editor%20Only-orange" alt="Editor Only"></a>
-    <a href="https://store.cocos.com/app/detail/8913"><img src="https://img.shields.io/badge/Cocos%20Store-Install-brightgreen" alt="Install from Cocos Store"></a>
   </p>
   <p align="center">
-    <a href="./README_CN.md">中文</a> | English
+    English
   </p>
 </p>
 
@@ -19,9 +18,9 @@
 
 ---
 
-Funplay MCP for Cocos is an MIT-licensed Cocos Creator extension that embeds an HTTP MCP server directly inside the editor. It lets AI assistants such as Claude Code, Cursor, Codex, VS Code Copilot, Trae, and Kiro inspect and operate your running Cocos project.
+XoV MCP for Cocos is an MIT-licensed Cocos Creator extension that embeds an HTTP MCP server directly inside the editor. It lets AI assistants such as Claude Code, Cursor, Codex, VS Code Copilot, Trae, and Kiro inspect and operate your running Cocos project.
 
-The package follows the same product direction as Funplay MCP for Unity: keep the default tool surface focused, provide a one-click client configuration window, and make one high-flexibility execution tool the primary workflow.
+The package keeps the default tool surface focused, provides a one-click client configuration window, and makes one high-flexibility execution tool the primary workflow.
 
 For Cocos, the primary tool is `execute_javascript`:
 
@@ -42,14 +41,13 @@ If you just want to connect quickly, do these three things:
 
 ### 1. Install as a Cocos Creator Extension
 
-Recommended install: use the official [Cocos Store page](https://store.cocos.com/app/detail/8913) and install the extension into your target Cocos Creator project.
-
+Install the extension into your target Cocos Creator project.
 For local development or unreleased builds, clone or copy this repository into your Cocos project extension directory:
 
 ```bash
 cd /path/to/your-cocos-project
 mkdir -p extensions
-git clone https://github.com/FunplayAI/funplay-cocos-mcp.git extensions/funplay-cocos-mcp
+git clone https://github.com/XOVIET-GAME/xov-cocos-mcp.git extensions/funplay-cocos-mcp
 ```
 
 Then restart Cocos Creator or reload extensions from the editor.
@@ -454,7 +452,7 @@ To generate a GitHub Release-ready extension package:
 npm run release:package
 ```
 
-The package is written to `releases/<version>/` with a zip, manifest, checksum file, and release README. See [RELEASE_WORKFLOW.md](./RELEASE_WORKFLOW.md) and [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) for the full process.
+The package is written to `releases/<version>/` with a zip, manifest, checksum file, and release README.
 
 Validate MCP Registry metadata before publishing:
 
@@ -464,4 +462,4 @@ npm run registry:validate
 
 ## License
 
-MIT License. See [LICENSE](./LICENSE).
+Copyright (c) 2026 XoV Studio. MIT License. See [LICENSE](./LICENSE).

@@ -11,17 +11,12 @@ const PACKAGE_DIR_NAME = 'funplay-cocos-mcp';
 const RELEASES_DIR = path.join(ROOT, 'releases');
 const TEMP_DIR = path.join(ROOT, '.release-tmp');
 const ZIP_PREFIX = 'Funplay.CocosMcp';
-const REPOSITORY_URL = 'https://github.com/FunplayAI/funplay-cocos-mcp';
+const REPOSITORY_URL = 'https://github.com/XOVIET-GAME/xov-cocos-mcp';
 
 const REQUIRED_REPO_FILES = [
   'package.json',
   'README.md',
-  'README_CN.md',
   'docs/TOOLS.md',
-  'RELEASE_WORKFLOW.md',
-  'RELEASE_CHECKLIST.md',
-  'CHANGELOG.md',
-  'CONTRIBUTING.md',
   'LICENSE',
   'server.json',
   'bin/funplay-cocos-mcp.js',
@@ -37,10 +32,7 @@ const REQUIRED_REPO_FILES = [
 const PACKAGE_INCLUDES = [
   'package.json',
   'README.md',
-  'README_CN.md',
   'docs',
-  'CHANGELOG.md',
-  'CONTRIBUTING.md',
   'LICENSE',
   'server.json',
   'bin',
@@ -208,9 +200,12 @@ function checkRelease(options = {}) {
   }
 
   const changelogPath = path.join(ROOT, 'CHANGELOG.md');
-  const changelog = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf8') : '';
-  if (version && !new RegExp(`^## \\[${escapeRegExp(version)}\\] - \\d{4}-\\d{2}-\\d{2}`, 'm').test(changelog)) {
-    errors.push(`CHANGELOG.md is missing a dated ## [${version}] release section.`);
+  let changelog = '';
+  if (fs.existsSync(changelogPath)) {
+    changelog = fs.readFileSync(changelogPath, 'utf8');
+    if (version && !new RegExp(`^## \\[${escapeRegExp(version)}\\] - \\d{4}-\\d{2}-\\d{2}`, 'm').test(changelog)) {
+      errors.push(`CHANGELOG.md is missing a dated ## [${version}] release section.`);
+    }
   }
 
   const trackedFiles = gitLines(['ls-files']);

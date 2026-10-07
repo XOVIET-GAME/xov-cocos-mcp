@@ -10,7 +10,9 @@ const {
   createNonce,
   getLockPath,
   getStatePath,
+  LOCK_STALE_AFTER_MS,
   releaseLaunchLock,
+  resolveNodeExecutable,
   resolveOwnershipDir,
 } = require('../../lib/gateway/process-manager');
 
@@ -42,6 +44,35 @@ test('acquireLaunchLock is exclusive and release removes the lock file', () => {
     // The lock can be re-acquired after release.
     const again = acquireLaunchLock(dir);
     releaseLaunchLock(again);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('acquireLaunchLock recovers an old lock left by a dead Editor host', () => {
+  const dir = createTempDir();
+  try {
+    const lockPath = getLockPath(dir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(lockPath, JSON.stringify({ pid: 999999, createdAt: new Date(Date.now() - LOCK_STALE_AFTER_MS - 1000).toISOString() }));
+
+    const recovered = acquireLaunchLock(dir);
+    assert.equal(recovered, lockPath);
+    releaseLaunchLock(recovered);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveNodeExecutable does not use CocosCreator.exe as the daemon runtime', () => {
+  const dir = createTempDir();
+  try {
+    const nodePath = path.join(dir, process.platform === 'win32' ? 'node.exe' : 'node');
+    fs.writeFileSync(nodePath, '');
+    const cocosPath = path.join(dir, process.platform === 'win32' ? 'CocosCreator.exe' : 'CocosCreator');
+    const resolved = resolveNodeExecutable(cocosPath, cocosPath, dir);
+    assert.match(path.basename(resolved).toLowerCase(), /^node(?:\.exe)?$/);
+    assert.notEqual(resolved, cocosPath);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

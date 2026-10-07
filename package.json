@@ -4,7 +4,7 @@
   "package_version": 2,
   "version": "0.4.5",
   "description": "Embedded MCP server for Cocos Creator with scene script execution, project resources, prompts, and file/scene tools.",
-  "author": "Funplay",
+  "author": "XoV Studio",
   "license": "MIT",
   "main": "browser.js",
   "bin": {
@@ -14,11 +14,11 @@
   "mcpName": "io.github.FunplayAI/funplay-cocos-mcp",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FunplayAI/funplay-cocos-mcp.git"
+    "url": "git+https://github.com/XOVIET-GAME/xov-cocos-mcp.git"
   },
-  "homepage": "https://github.com/FunplayAI/funplay-cocos-mcp#readme",
+  "homepage": "https://github.com/XOVIET-GAME/xov-cocos-mcp#readme",
   "bugs": {
-    "url": "https://github.com/FunplayAI/funplay-cocos-mcp/issues"
+    "url": "https://github.com/XOVIET-GAME/xov-cocos-mcp/issues"
   },
   "keywords": [
     "mcp",
@@ -41,12 +41,7 @@
     "scene.js",
     "server.json",
     "README.md",
-    "README_CN.md",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "LICENSE",
-    "RELEASE_WORKFLOW.md",
-    "RELEASE_CHECKLIST.md"
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public"

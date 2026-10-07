@@ -4,7 +4,7 @@
   "title": "Funplay Cocos MCP",
   "description": "stdio bridge for the local Cocos Creator Editor MCP server from FunplayAI/funplay-cocos-mcp.",
   "repository": {
-    "url": "https://github.com/FunplayAI/funplay-cocos-mcp",
+    "url": "https://github.com/XOVIET-GAME/xov-cocos-mcp",
     "source": "github"
   },
   "version": "0.4.5",

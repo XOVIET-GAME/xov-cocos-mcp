@@ -28,7 +28,7 @@ const { detectEditorLanguage, normalizeLanguagePreference, resolveLanguage } = r
 
 const EXTENSION_NAME = manifest.name || 'funplay-cocos-mcp';
 const LOG_PREFIX = '[Funplay Cocos MCP]';
-const REPOSITORY_URL = 'https://github.com/FunplayAI/funplay-cocos-mcp';
+const REPOSITORY_URL = 'https://github.com/XOVIET-GAME/xov-cocos-mcp';
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
@@ -36,6 +36,7 @@ class ExtensionService {
   constructor() {
     this.config = null;
     this.gatewayClient = null;
+    this.startPromise = null;
     this.commandExecutor = null;
     this.toolRegistry = null;
     this.resourceProvider = null;
@@ -143,6 +144,21 @@ class ExtensionService {
   }
 
   async startServer() {
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+    const startPromise = this._startServer();
+    this.startPromise = startPromise;
+    try {
+      return await startPromise;
+    } finally {
+      if (this.startPromise === startPromise) {
+        this.startPromise = null;
+      }
+    }
+  }
+
+  async _startServer() {
     if (this.gatewayClient && this.gatewayClient.state.registered) {
       this.log('info', `Start requested but Gateway connection is already active at ${this.getStatus().url}`);
       return this.getStatus();
@@ -155,10 +171,15 @@ class ExtensionService {
       getStatus: () => this.getStatus(),
       logger: { log: (level, message) => this.log(level, message) },
     });
-    const wsAvailable = typeof globalThis.WebSocket === 'function';
+    const webSocketCtor = typeof globalThis.WebSocket === 'function'
+      ? globalThis.WebSocket
+      : globalThis.window && typeof globalThis.window.WebSocket === 'function'
+        ? globalThis.window.WebSocket
+        : null;
+    const wsAvailable = Boolean(webSocketCtor);
     const authToken = process.env.COCOS_GATEWAY_AUTH_TOKEN || '';
     const transport = wsAvailable
-      ? createWebSocketControlTransport({ WebSocket: globalThis.WebSocket, authToken })
+      ? createWebSocketControlTransport({ WebSocket: webSocketCtor, authToken })
       : createHttpControlTransport({ authToken });
     if (!wsAvailable) {
       this.log('warn', 'WebSocket is unavailable; using lifecycle-only HTTP transport. Tool forwarding requires Cocos WebSocket support.');
@@ -178,12 +199,15 @@ class ExtensionService {
       onCommandCancel: (requestId) => this.commandExecutor.cancel(requestId),
       onToolsList: () => this.toolRegistry.listTools(),
     });
+    const client = this.gatewayClient;
     try {
-      await this.gatewayClient.ensure();
+      await client.ensure();
     } catch (error) {
-      await this.gatewayClient.close().catch(() => {});
-      this.gatewayClient = null;
-      this.commandExecutor = null;
+      await client.close().catch(() => {});
+      if (this.gatewayClient === client) {
+        this.gatewayClient = null;
+        this.commandExecutor = null;
+      }
       throw error;
     }
     this.log('info', `Editor registered with central Gateway at ${this.getStatus().url}`);
