@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `writeFileAtomic` helper in `lib/atomic-file.js` creating temporary files with `O_EXCL` (`wx`), fsyncing, and atomically renaming with strict `0600` permissions.
 - Hardened gateway ownership state (`daemon-entry.js`) and target registry alias state (`target-registry.js`) to use atomic state file writes with `0600` permissions on POSIX systems.
 
-## [0.6.4] - 2026-10-07
+## [0.6.4] - 2026-09-19
 
 ### Added
 - Gateway multi-editor architecture:
