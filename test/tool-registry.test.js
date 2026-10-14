@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { createToolRegistry } = require('../lib/tool-registry');
+const previewRuntime = require('../lib/preview-runtime');
 
 function createRegistry(profile, projectPath = path.resolve('/tmp/funplay-cocos-test-project'), configExtras = {}, overrides = {}) {
   return createToolRegistry({
@@ -14,12 +15,45 @@ function createRegistry(profile, projectPath = path.resolve('/tmp/funplay-cocos-
       projectPath,
       version: '0.0.0-test',
     }),
-    interactionLog: { add() {} },
+    interactionLog: overrides.interactionLog || { add() {} },
     runtimeLog: { add() {}, list: () => [], clear: () => 0 },
     sceneBridge: overrides.sceneBridge || { call: async () => ({ ok: true }) },
     editorExecutor: overrides.editorExecutor || (async () => ({ ok: true })),
   });
 }
+
+test('runtime tools control the preview toolbar instead of calling edit-scene director helpers', async (t) => {
+  const commands = [];
+  t.mock.method(previewRuntime, 'controlPreviewToolbar', async (command) => {
+    commands.push(command);
+    return { scope: 'gameView', running: true, paused: command.action === 'pause', toolbarSynchronized: true };
+  });
+  const registry = createRegistry('full', undefined, {}, {
+    sceneBridge: { call: async () => assert.fail('Preview controls must not use the edit-scene director') },
+  });
+  for (const name of ['get_runtime_state', 'pause_runtime', 'resume_runtime']) {
+    const { value } = await registry.callToolDetailed(name, {});
+    assert.equal(value.ok, true);
+    assert.equal(value.data.scope, 'gameView');
+    assert.equal(value.data.paused, name === 'pause_runtime');
+  }
+  assert.deepEqual(commands, [{ action: 'state' }, { action: 'pause' }, { action: 'resume' }]);
+});
+
+test('scene validation uses Game View state while preserving separate edit-scene performance counters', async (t) => {
+  t.mock.method(previewRuntime, 'controlPreviewToolbar', async (command) => {
+    assert.deepEqual(command, { action: 'state' });
+    return { scope: 'gameView', running: true, paused: true };
+  });
+  const sceneCalls = [];
+  const registry = createRegistry('core', undefined, {}, {
+    sceneBridge: { call: async (method) => { sceneCalls.push(method); return { ok: true }; } },
+  });
+  const { value } = await registry.callToolDetailed('validate_scene', { includeScriptDiagnostics: false, includeLogErrors: false });
+  assert.equal(value.data.runtime.scope, 'gameView');
+  assert.equal(value.data.runtime.paused, true);
+  assert.deepEqual(sceneCalls, ['getSceneInfo', 'getPerformanceSnapshot']);
+});
 
 function mockEditorRequests(t, handler) {
   const previousEditor = global.Editor;
@@ -70,6 +104,35 @@ test('full profile exposes all built-in tools', () => {
   assert.equal(tools.some((tool) => tool.name === 'broadcast_editor_message'), true);
   assert.equal(tools.some((tool) => tool.name === 'get_editor_state'), true);
   assert.equal(tools.some((tool) => tool.name === 'set_selection'), true);
+});
+
+test('recommended project skill tool records managed template metadata', async (t) => {
+  const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), 'funplay-cocos-managed-skill-'));
+  t.after(() => fs.rmSync(projectPath, { recursive: true, force: true }));
+  const registry = createRegistry('full', projectPath);
+
+  const result = await registry.callToolDetailed('create_cocos_mcp_project_skill', {});
+
+  assert.equal(result.value.data.path, '.agents/skills/funplay-cocos-mcp-workflow/SKILL.md');
+  assert.equal(
+    result.value.data.manifest,
+    '.agents/skills/funplay-cocos-mcp-workflow/.funplay-cocos-mcp.json'
+  );
+  assert.equal(fs.existsSync(path.join(projectPath, result.value.data.manifest)), true);
+});
+
+test('Skills tool schemas and execution support OpenCode project directories', async (t) => {
+  const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), 'funplay-opencode-tools-'));
+  t.after(() => fs.rmSync(projectPath, { recursive: true, force: true }));
+  const registry = createRegistry('full', projectPath);
+  for (const name of ['list_project_instructions', 'create_project_skill', 'create_cocos_mcp_project_skill']) {
+    const tool = registry.listTools().find((entry) => entry.name === name);
+    assert.ok(tool.inputSchema.properties.clientId.enum.includes('opencode'));
+  }
+  const result = await registry.callToolDetailed('create_cocos_mcp_project_skill', { clientId: 'opencode' });
+  assert.equal(result.value.data.path, '.opencode/skills/funplay-cocos-mcp-workflow/SKILL.md');
+  assert.equal(fs.existsSync(path.join(projectPath, result.value.data.path)), true);
+  assert.equal(fs.existsSync(path.join(projectPath, '.agents')), false);
 });
 
 test('create_scene serializes and persists a scene without an interactive save dialog', async (t) => {
@@ -155,6 +218,18 @@ test('callToolDetailed preserves structured values and text output', async () =>
   assert.match(result.text, /projectPath/);
 });
 
+test('tool calls retain diagnostic summaries with detached activity previews', async () => {
+  const { InteractionLog } = require('../lib/interaction-log');
+  const log = new InteractionLog();
+  const registry = createRegistry('core', path.resolve('/tmp/funplay-cocos-test-project'), {}, { interactionLog: log });
+  const result = await registry.callToolDetailed('get_project_info', {});
+  assert.equal(log.list()[0].toolName, 'get_project_info');
+  assert.equal(log.list()[0].status, 'success');
+  assert.equal(typeof log.list()[0].summary, 'string');
+  assert.equal(log.list()[0].preview.projectPath, result.value.data.projectPath);
+  assert.notEqual(log.list()[0].preview, result.value.data);
+});
+
 test('create_prefab_from_node serializes through scene bridge and writes asset file', async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'funplay-cocos-prefab-'));
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -168,7 +243,24 @@ test('create_prefab_from_node serializes through scene bridge and writes asset f
         return {
           source: { name: 'SourceNode', path: 'Canvas/SourceNode', uuid: 'source-uuid' },
           root: { name: payload.rootName || 'SourceNode' },
-          content: '[{"__type__":"cc.Prefab","data":{"__id__":1}},{"__type__":"cc.Node","_name":"SourceNode"}]',
+          content: JSON.stringify([
+            { __type__: 'cc.Prefab', data: { __id__: 1 } },
+            {
+              __type__: 'cc.Node',
+              _name: 'SourceNode',
+              _layer: 33554432,
+              _components: [{ __id__: 2 }],
+              _prefab: { __id__: 4 },
+            },
+            { __type__: 'cc.UITransform', node: { __id__: 1 }, __prefab: { __id__: 3 } },
+            { __type__: 'cc.CompPrefabInfo', fileId: 'component-file-id' },
+            {
+              __type__: 'cc.PrefabInfo',
+              root: { __id__: 1 },
+              asset: { __id__: 0 },
+              fileId: 'node-file-id',
+            },
+          ]),
         };
       },
     },
@@ -190,7 +282,80 @@ test('create_prefab_from_node serializes through scene bridge and writes asset f
   });
   assert.equal(result.value.data.created, true);
   assert.equal(result.value.data.path, 'assets/Prefabs/LoginPanel.prefab');
+  assert.deepEqual(result.value.data.prefabMetadata, {
+    valid: true,
+    prefabIndex: 0,
+    rootIndex: 1,
+    nodeCount: 1,
+    componentCount: 1,
+    fileIdCount: 2,
+  });
   assert.equal(fs.existsSync(path.join(tmp, 'assets', 'Prefabs', 'LoginPanel.prefab')), true);
+});
+
+test('create_prefab_from_node rejects non-UI_2D node layers before writing', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'funplay-cocos-prefab-layer-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(tmp, 'assets'), { recursive: true });
+
+  const registry = createRegistry('full', tmp, {}, {
+    sceneBridge: {
+      call: async () => ({
+        source: { name: 'SourceNode', path: 'SourceNode', uuid: 'source-uuid' },
+        root: { name: 'SourceNode' },
+        content: JSON.stringify([
+          { __type__: 'cc.Prefab', data: { __id__: 1 } },
+          {
+            __type__: 'cc.Node',
+            _name: 'SourceNode',
+            _layer: 1,
+            _components: [],
+            _prefab: { __id__: 2 },
+          },
+          {
+            __type__: 'cc.PrefabInfo',
+            root: { __id__: 1 },
+            asset: { __id__: 0 },
+            fileId: 'node-file-id',
+          },
+        ]),
+      }),
+    },
+  });
+
+  await assert.rejects(
+    () => registry.callToolDetailed('create_prefab_from_node', {
+      name: 'SourceNode',
+      target: 'Prefabs/WrongLayer',
+    }),
+    /cc\.Node at index 1\._layer is 1, expected 33554432/
+  );
+  assert.equal(fs.existsSync(path.join(tmp, 'assets', 'Prefabs', 'WrongLayer.prefab')), false);
+});
+
+test('create_prefab_from_node rejects serialized output without PrefabInfo', async (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'funplay-cocos-invalid-prefab-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(tmp, 'assets'), { recursive: true });
+
+  const registry = createRegistry('full', tmp, {}, {
+    sceneBridge: {
+      call: async () => ({
+        source: { name: 'SourceNode', path: 'Canvas/SourceNode', uuid: 'source-uuid' },
+        root: { name: 'SourceNode' },
+        content: '[{"__type__":"cc.Prefab","data":{"__id__":1}},{"__type__":"cc.Node","_name":"SourceNode","_layer":33554432,"_components":[],"_prefab":null}]',
+      }),
+    },
+  });
+
+  await assert.rejects(
+    () => registry.callToolDetailed('create_prefab_from_node', {
+      name: 'SourceNode',
+      target: 'Prefabs/Invalid',
+    }),
+    /cc.Node at index 1\._prefab is not an object reference/
+  );
+  assert.equal(fs.existsSync(path.join(tmp, 'assets', 'Prefabs', 'Invalid.prefab')), false);
 });
 
 test('create_prefab_instance creates a cc.Prefab node and verifies its linkage', async (t) => {

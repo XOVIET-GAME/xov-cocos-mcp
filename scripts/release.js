@@ -25,6 +25,7 @@ const REQUIRED_REPO_FILES = [
   'panel/index.js',
   'i18n/en.js',
   'i18n/zh.js',
+  'lib/global-install.js',
   'lib/server.js',
   'lib/tool-registry.js'
 ];

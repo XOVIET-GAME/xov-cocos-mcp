@@ -52,11 +52,11 @@ Generated from `lib/tool-registry.js`. The default `core` profile exposes 39 too
 | Tool | Profiles | Access | Description |
 |---|---|---|---|
 | `get_build_status` | `core`, `full` | read-only | [specialist] Query Cocos build/preview status using known builder message variants. |
-| `get_preview_mode` | `core`, `full` | read-only | [specialist] Query the active Cocos Creator preview mode and browser preview URL. Modes are browser, gameView, and simulator. |
+| `get_preview_mode` | `core`, `full` | read-only | [specialist] Query the active Cocos Creator preview mode. Browser results use a same-host loopback url/localUrl and preserve Creator's reported LAN address as networkUrl. |
 | `open_build_panel` | `full` | stateful | [core] Open the Cocos build panel, defaulting to the builder panel id. |
-| `run_project_preview` | `full` | stateful | [core] Start Cocos Creator 3.8.x preview in browser, editor Game View, or simulator mode and return the effective mode and browser URL when available. |
+| `run_project_preview` | `full` | stateful | [core] Start Cocos Creator 3.8.x preview in browser, editor Game View, or simulator mode. Game View uses the native toolbar and does not toggle off an already running preview. Browser results use a same-host loopback url/localUrl and preserve Creator's reported LAN address as networkUrl. |
 | `save_current_scene` | `full` | stateful | [core] Save the currently open Cocos scene using available editor scene messages. |
-| `set_preview_mode` | `full` | mutating | [core] Switch Cocos Creator preview mode using the supported 3.8.x Preview profile and toolbar message. |
+| `set_preview_mode` | `full` | mutating | [core] Switch Cocos Creator 3.8.x preview mode through the native toolbar, synchronizing its state and stopping Game View before switching away. |
 
 ### Camera
 
@@ -131,10 +131,10 @@ Generated from `lib/tool-registry.js`. The default `core` profile exposes 39 too
 
 | Tool | Profiles | Access | Description |
 |---|---|---|---|
-| `create_cocos_mcp_project_skill` | `full` | stateful | [core] Create a recommended local Codex project skill for Funplay Cocos MCP workflows. |
-| `create_project_skill` | `full` | stateful | [core] Create a local Codex project skill under .codex/skills/{skillName}/SKILL.md. |
-| `list_project_instructions` | `core`, `full` | read-only | [specialist] List project AI instruction files and local Codex project skills. |
-| `read_project_instruction` | `core`, `full` | read-only | [specialist] Read a project AI instruction file such as AGENTS.md, CLAUDE.md, or a .codex skill SKILL.md. |
+| `create_cocos_mcp_project_skill` | `full` | stateful | [core] Create the recommended Funplay Cocos MCP workflow Skill for a supported client (defaults to Codex). |
+| `create_project_skill` | `full` | stateful | [core] Create a project Skill for Codex, Claude Code, Cursor, Qoder, or Kimi Code. Defaults to Codex under .agents/skills. |
+| `list_project_instructions` | `core`, `full` | read-only | [specialist] List project AI instruction files and Skills for a supported client (defaults to Codex). |
+| `read_project_instruction` | `core`, `full` | read-only | [specialist] Read a project AI instruction file such as AGENTS.md, CLAUDE.md, or a project SKILL.md. |
 | `write_project_instruction` | `full` | mutating | [core] Create or update a project AI instruction file inside the Cocos project. |
 
 ### Logs
@@ -149,7 +149,7 @@ Generated from `lib/tool-registry.js`. The default `core` profile exposes 39 too
 
 | Tool | Profiles | Access | Description |
 |---|---|---|---|
-| `get_performance_snapshot` | `core`, `full` | read-only | [specialist] Return scene scale and runtime performance-oriented counters such as node/component counts, UI counts, depth, memory, and warnings. |
+| `get_performance_snapshot` | `core`, `full` | read-only | [specialist] Return edit-scene scale and performance-oriented counters such as node/component counts, UI counts, depth, memory, and warnings. Its director counters are not Game View preview state. |
 | `list_editor_windows` | `core`, `full` | read-only | [specialist] List available Electron windows so screenshots or input-targeting can choose the correct window. Use this when window targeting is the explicit problem. |
 
 ### Prefabs
@@ -157,7 +157,7 @@ Generated from `lib/tool-registry.js`. The default `core` profile exposes 39 too
 | Tool | Profiles | Access | Description |
 |---|---|---|---|
 | `apply_prefab_instance` | `full` | stateful | [core] Apply a scene prefab instance back to its associated prefab asset using the Cocos editor scene apply-prefab message. |
-| `create_prefab_from_node` | `full` | stateful | [core] Create a prefab asset from an existing scene node using scene-process serialization and asset-db persistence. Use this instead of raw scene:create-prefab on Cocos Creator 3.8.x. |
+| `create_prefab_from_node` | `full` | stateful | [core] Create a prefab asset from an existing scene node using scene-process serialization and asset-db persistence. The cloned hierarchy is normalized to UI_2D without modifying the source nodes. Use this instead of raw scene:create-prefab on Cocos Creator 3.8.x. |
 | `create_prefab_instance` | `full` | stateful | [core] Create and verify a linked prefab instance in the editor hierarchy using Cocos scene create-node when available. |
 | `duplicate_prefab` | `full` | stateful | [core] Create a new prefab asset by duplicating an existing prefab file without copying its .meta UUID. |
 | `edit_prefab_json` | `full` | stateful | [core] Edit a prefab JSON file by JSON path assignment or literal search/replace, then validate references. |
@@ -186,10 +186,10 @@ Generated from `lib/tool-registry.js`. The default `core` profile exposes 39 too
 
 | Tool | Profiles | Access | Description |
 |---|---|---|---|
-| `get_runtime_state` | `core`, `full` | read-only | [specialist] Return structured Cocos runtime state including pause state, frame count, and scheduler time scale. Prefer this when you want a compact validation snapshot. |
-| `pause_runtime` | `full` | stateful | [core] Pause Cocos director game logic execution. |
-| `resume_runtime` | `full` | stateful | [core] Resume Cocos director game logic execution. |
-| `set_time_scale` | `full` | mutating | [core] Set Cocos scheduler time scale for runtime validation. |
+| `get_runtime_state` | `core`, `full` | read-only | [specialist] Return the editor Game View preview running/paused state and toolbar synchronization status, not edit-scene director counters. Does not inspect browser or simulator runtime state. |
+| `pause_runtime` | `full` | stateful | [core] Pause an active editor Game View preview through the native toolbar. Idempotent; does not pause the edit-scene director, browser, or simulator. |
+| `resume_runtime` | `full` | stateful | [core] Resume a paused editor Game View preview through the native toolbar. Idempotent; requires a running Game View preview. |
+| `set_time_scale` | `full` | mutating | [core] Set the edit-scene Cocos scheduler time scale. Does not change the separate Game View preview runtime. |
 
 ### Scene
 

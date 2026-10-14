@@ -2,7 +2,7 @@
   "name": "funplay-cocos-mcp",
   "title": "i18n:funplay-cocos-mcp.title",
   "package_version": 2,
-  "version": "0.4.5",
+  "version": "0.6.4",
   "description": "Embedded MCP server for Cocos Creator with scene script execution, project resources, prompts, and file/scene tools.",
   "author": "XoV Studio",
   "license": "MIT",
@@ -50,7 +50,7 @@
     "eslint": "^8.57.1"
   },
   "scripts": {
-    "check": "node --check browser.js && node --check scene.js && node --check panel/index.js && node --check panel/shared.js && node --check panel/tool-description-i18n.js && node --check panel/tool-exposure.js && node --check panel/settings.js && node --check panel/activity.js && node --check bin/funplay-cocos-mcp.js && node --check bin/cocos-cli.js && node --check i18n/en.js && node --check i18n/zh.js && node --check lib/assets.js && node --check lib/client-config.js && node --check lib/config.js && node --check lib/diagnostics.js && node --check lib/electron-tools.js && node --check lib/i18n.js && node --check lib/input.js && node --check lib/interaction-log.js && node --check lib/javascript-safety.js && node --check lib/logs.js && node --check lib/path-safety.js && node --check lib/prefabs.js && node --check lib/project-instructions.js && node --check lib/prompts.js && node --check lib/resources.js && node --check lib/runtime-log.js && node --check lib/scenes.js && node --check lib/screenshots.js && node --check lib/server.js && node --check lib/tool-profiles.js && node --check lib/tool-registry.js && node --check lib/tools/assets-advanced.js && node --check lib/tools/cocos-project.js && node --check lib/tools/files.js && node --check lib/tools/scene-events.js && node --check lib/extension/editor-command-executor.js && node --check lib/extension/gateway-client.js && node --check lib/extension/instance-registration.js && node --check lib/gateway/audit-log.js && node --check lib/gateway/conflict-detector.js && node --check lib/gateway/control-websocket.js && node --check lib/gateway/daemon-entry.js && node --check lib/gateway/extension-protocol.js && node --check lib/gateway/gateway-server.js && node --check lib/gateway/idempotency-store.js && node --check lib/gateway/job-manager.js && node --check lib/gateway/lifecycle-manager.js && node --check lib/gateway/lock-manager.js && node --check lib/gateway/metrics.js && node --check lib/gateway/mcp-front-door.js && node --check lib/gateway/process-manager.js && node --check lib/gateway/rate-limiter.js && node --check lib/gateway/scheduler.js && node --check lib/gateway/session-registry.js && node --check lib/gateway/target-registry.js && node --check lib/gateway/tool-policies.js && node --check lib/gateway/transport.js && node --check lib/update-checker.js && node --check lib/updater.js && node --check lib/utils.js && node --check scripts/generate-tool-docs.js && node --check scripts/release.js",
+    "check": "node --check lib/jsonc.js && node --check lib/preview-runtime.js && node --check browser.js && node --check scene.js && node --check panel/index.js && node --check panel/shared.js && node --check panel/tool-description-i18n.js && node --check panel/tool-exposure.js && node --check panel/settings.js && node --check panel/project-skills.js && node --check bin/funplay-cocos-mcp.js && node --check i18n/en.js && node --check i18n/zh.js && node --check lib/activity-preview.js && node --check lib/script-execution.js && node --check lib/atomic-file.js && node --check lib/project-prompts.js && node --check lib/skill-platforms.js && node --check lib/assets.js && node --check lib/client-config.js && node --check lib/config.js && node --check lib/diagnostics.js && node --check lib/electron-tools.js && node --check lib/global-install.js && node --check lib/i18n.js && node --check lib/input.js && node --check lib/interaction-log.js && node --check lib/javascript-safety.js && node --check lib/logs.js && node --check lib/path-safety.js && node --check lib/prefab-metadata.js && node --check lib/prefabs.js && node --check lib/project-instructions.js && node --check lib/project-skills.js && node --check lib/prompts.js && node --check lib/resources.js && node --check lib/runtime-log.js && node --check lib/scenes.js && node --check lib/screenshots.js && node --check lib/server.js && node --check lib/tool-profiles.js && node --check lib/tool-registry.js && node --check lib/tools/assets-advanced.js && node --check lib/tools/cocos-project.js && node --check lib/tools/files.js && node --check lib/tools/scene-events.js && node --check lib/update-checker.js && node --check lib/updater.js && node --check lib/utils.js && node --check scripts/generate-tool-docs.js && node --check scripts/release.js && node --check bin/cocos-cli.js && node --check lib/extension/editor-command-executor.js && node --check lib/extension/gateway-client.js && node --check lib/extension/instance-registration.js && node --check lib/gateway/audit-log.js && node --check lib/gateway/conflict-detector.js && node --check lib/gateway/control-websocket.js && node --check lib/gateway/daemon-entry.js && node --check lib/gateway/extension-protocol.js && node --check lib/gateway/gateway-server.js && node --check lib/gateway/idempotency-store.js && node --check lib/gateway/job-manager.js && node --check lib/gateway/lifecycle-manager.js && node --check lib/gateway/lock-manager.js && node --check lib/gateway/metrics.js && node --check lib/gateway/mcp-front-door.js && node --check lib/gateway/process-manager.js && node --check lib/gateway/rate-limiter.js && node --check lib/gateway/scheduler.js && node --check lib/gateway/session-registry.js && node --check lib/gateway/target-registry.js && node --check lib/gateway/tool-policies.js && node --check lib/gateway/transport.js",
     "lint": "eslint \"browser.js\" \"scene.js\" \"bin/**/*.js\" \"lib/**/*.js\" \"panel/**/*.js\" \"scripts/**/*.js\"",
     "check:all": "npm run check && npm run lint",
     "test": "node --test",
@@ -96,15 +96,15 @@
         "height": 620
       }
     },
-    "activity": {
-      "title": "i18n:funplay-cocos-mcp.panel_activity",
+    "project-skills": {
+      "title": "i18n:funplay-cocos-mcp.panel_project_skills",
       "type": "dockable",
-      "main": "panel/activity.js",
+      "main": "panel/project-skills.js",
       "size": {
-        "min-width": 560,
-        "min-height": 420,
+        "min-width": 580,
+        "min-height": 480,
         "width": 780,
-        "height": 640
+        "height": 760
       }
     }
   },
@@ -127,8 +127,8 @@
       },
       {
         "path": "Funplay",
-        "label": "i18n:funplay-cocos-mcp.menu_activity",
-        "message": "open-activity"
+        "label": "i18n:funplay-cocos-mcp.menu_project_skills",
+        "message": "open-project-skills"
       }
     ],
     "messages": {
@@ -147,9 +147,9 @@
           "openSettingsPanel"
         ]
       },
-      "open-activity": {
+      "open-project-skills": {
         "methods": [
-          "openActivityPanel"
+          "openProjectSkillsPanel"
         ]
       },
       "start-server": {
@@ -177,6 +177,11 @@
           "getPanelState"
         ]
       },
+      "clear-recent-activity": {
+        "methods": [
+          "clearRecentActivity"
+        ]
+      },
       "save-config": {
         "methods": [
           "saveConfig"
@@ -192,6 +197,36 @@
           "callToolFromPanel"
         ]
       },
+      "get-project-skills-state": {
+        "methods": [
+          "getProjectSkillsState"
+        ]
+      },
+      "preview-project-skill-update": {
+        "methods": [
+          "previewProjectSkillUpdate"
+        ]
+      },
+      "install-or-update-project-skill": {
+        "methods": [
+          "installOrUpdateProjectSkill"
+        ]
+      },
+      "restore-project-skill-backup": {
+        "methods": [
+          "restoreProjectSkillBackup"
+        ]
+      },
+      "create-project-skill": {
+        "methods": [
+          "createProjectSkillFromPanel"
+        ]
+      },
+      "reveal-project-skill": {
+        "methods": [
+          "revealProjectSkill"
+        ]
+      },
       "check-updates": {
         "methods": [
           "checkUpdates"
@@ -205,6 +240,11 @@
       "install-update": {
         "methods": [
           "installUpdate"
+        ]
+      },
+      "install-globally": {
+        "methods": [
+          "installGlobally"
         ]
       },
       "open-update-release": {
