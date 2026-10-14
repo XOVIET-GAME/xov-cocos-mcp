@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switched token verification to constant-time comparison (`crypto.timingSafeEqual`) to mitigate timing side-channel attacks against authentication.
 - Enforced strict Origin and Host header validation on WebSocket upgrades and HTTP control endpoints to protect against DNS rebinding and cross-origin WebSocket hijacking.
   Local Electron renderers (`Origin: file://`) and requests without an Origin remain allowed.
+  Extra trusted Origins can be allowed via `COCOS_GATEWAY_ALLOWED_ORIGINS` (comma-separated); rejected requests are logged with their Host and Origin.
 
 ### Added
 - Added `writeFileAtomic` helper in `lib/atomic-file.js` creating temporary files with `O_EXCL` (`wx`), fsyncing, and atomically renaming with strict `0600` permissions.

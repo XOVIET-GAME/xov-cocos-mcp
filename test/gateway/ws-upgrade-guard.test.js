@@ -40,7 +40,11 @@ test('real Gateway WebSocket upgrade enforces token, Host and Origin on loopback
     assert.match(await upgrade(port, { Host: 'evil.example', 'Sec-WebSocket-Protocol': 'bearer.secret' }), /403/);
     assert.match(await upgrade(port, { Host: host, Origin: 'https://evil.example', 'Sec-WebSocket-Protocol': 'bearer.secret' }), /403/);
     assert.match(await upgrade(port, { Host: host, Origin: 'null', 'Sec-WebSocket-Protocol': 'bearer.secret' }), /403/);
+    process.env.COCOS_GATEWAY_ALLOWED_ORIGINS = 'app://editor';
+    assert.match(await upgrade(port, { Host: host, Origin: 'app://editor', 'Sec-WebSocket-Protocol': 'bearer.secret' }), /101/);
+    assert.match(await upgrade(port, { Host: host, Origin: 'app://other', 'Sec-WebSocket-Protocol': 'bearer.secret' }), /403/);
   } finally {
+    delete process.env.COCOS_GATEWAY_ALLOWED_ORIGINS;
     await server.stop();
     fs.rmSync(dir, { recursive: true, force: true });
   }
