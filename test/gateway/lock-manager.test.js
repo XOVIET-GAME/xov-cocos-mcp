@@ -5,12 +5,12 @@ const test = require('node:test');
 const { LockManager } = require('../../lib/gateway/lock-manager');
 
 test('multi-resource acquisition is atomic and sorted by fixed resource order', async () => {
-  const manager = new LockManager({ watchdogIntervalMs: 5, defaultTimeoutMs: 50 });
+  const manager = new LockManager({ defaultTimeoutMs: 50 });
   try {
     const first = await manager.acquire([
       { name: 'file:a', mode: 'write' },
       { name: 'project:p', mode: 'write' },
-    ], { ownerId: 'a', leaseMs: 100 });
+    ], { ownerId: 'a', leaseMs: 10000 });
     const pending = manager.acquire([
       { name: 'project:p', mode: 'write' },
       { name: 'file:b', mode: 'write' },

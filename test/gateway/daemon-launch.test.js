@@ -7,7 +7,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { GatewayClient } = require('../../lib/extension/gateway-client');
 const { createHttpControlTransport } = require('../../lib/gateway/transport');
-const { readState } = require('../../lib/gateway/process-manager');
+const { readState, getStatePath } = require('../../lib/gateway/process-manager');
 
 const DAEMON_ENTRY = path.resolve(__dirname, '..', '..', 'lib', 'gateway', 'daemon-entry.js');
 
@@ -56,6 +56,10 @@ test('client launches a detached Gateway daemon and registers against it', async
     assert.ok(stateFile);
     assert.equal(stateFile.ownerExtensionId, 'funplay-cocos-mcp');
     assert.ok(stateFile.pid);
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(getStatePath(dir));
+      assert.equal((stat.mode & 0o777).toString(8), '600');
+    }
 
     // Health through the transport abstraction reports the daemon.
     const health = await client.transport.health(gatewayUrl);

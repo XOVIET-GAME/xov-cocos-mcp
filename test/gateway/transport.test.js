@@ -41,8 +41,10 @@ test('createWebSocketControlTransport requires a WebSocket client', () => {
 });
 
 test('createWebSocketControlTransport returns a transport factory when provided', () => {
+  let ctorArgs;
   class FakeWebSocket {
-    constructor(url) {
+    constructor(url, protocols) {
+      ctorArgs = { url, protocols };
       this.url = url;
       this.readyState = 1;
       this._listeners = {};
@@ -60,9 +62,11 @@ test('createWebSocketControlTransport returns a transport factory when provided'
       }
     }
   }
-  const factory = createWebSocketControlTransport({ WebSocket: FakeWebSocket });
+  const factory = createWebSocketControlTransport({ WebSocket: FakeWebSocket, authToken: 'secret-token' });
   assert.equal(factory.kind, 'websocket');
   const channel = factory.connect('http://127.0.0.1:8787');
+  assert.equal(ctorArgs.url, 'ws://127.0.0.1:8787/control');
+  assert.deepEqual(ctorArgs.protocols, ['bearer.secret-token']);
   assert.equal(typeof channel.request, 'function');
   assert.equal(typeof channel.health, 'function');
   assert.equal(typeof channel.close, 'function');

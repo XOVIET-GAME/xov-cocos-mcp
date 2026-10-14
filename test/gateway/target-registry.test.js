@@ -1,8 +1,12 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { TargetRegistry } = require('../../lib/gateway/target-registry');
+const { writeFileAtomic } = require('../../lib/atomic-file');
 
 function makeInstance(overrides = {}) {
   return {
@@ -139,4 +143,54 @@ test('start and stop manage the periodic stale scan', async () => {
   await new Promise((resolve) => setTimeout(resolve, 120));
   registry.stop();
   assert.equal(registry.count(), 0);
+});
+
+test('persistAliases writes atomic state file with mode 0600 on posix', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cocos-target-registry-test-'));
+  try {
+    const statePath = path.join(tempDir, 'sub', 'aliases.json');
+    const registry = new TargetRegistry({ statePath });
+    registry.register(makeInstance({ editorInstanceId: 'editor-1' }));
+    registry.setAlias('editor-1', 'alias-1');
+
+    assert.equal(fs.existsSync(statePath), true);
+    const content = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    assert.deepEqual(content, { 'editor-1': 'alias-1' });
+
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(statePath);
+      assert.equal((stat.mode & 0o777).toString(8), '600');
+    }
+
+    const reloaded = new TargetRegistry({ statePath });
+    assert.equal(reloaded.aliases['editor-1'], 'alias-1');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('writeFileAtomic writes mode 0600 on posix and cleans up on write failure', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cocos-atomic-test-'));
+  try {
+    const targetFile = path.join(tempDir, 'nested', 'state.json');
+    writeFileAtomic(targetFile, JSON.stringify({ ok: true }));
+    assert.equal(fs.existsSync(targetFile), true);
+
+    if (process.platform !== 'win32') {
+      const stat = fs.statSync(targetFile);
+      assert.equal((stat.mode & 0o777).toString(8), '600');
+    }
+
+    // Write failure leaves no partial file
+    const failFile = path.join(tempDir, 'nested', 'fail.json');
+    assert.throws(() => {
+      writeFileAtomic(failFile, 12345);
+    }, /TypeError/);
+
+    assert.equal(fs.existsSync(failFile), false);
+    const entries = fs.readdirSync(path.dirname(failFile));
+    assert.deepEqual(entries, ['state.json']);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });

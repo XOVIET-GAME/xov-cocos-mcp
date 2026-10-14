@@ -50,7 +50,7 @@ function postJson(port, pathWithQuery, payload) {
   });
 }
 
-function getJson(port, pathWithQuery) {
+function getJson(port, pathWithQuery, headers = { Accept: 'application/json' }) {
   return new Promise((resolve, reject) => {
     const request = http.request(
       {
@@ -59,7 +59,7 @@ function getJson(port, pathWithQuery) {
         path: pathWithQuery,
         method: 'GET',
         agent: false,
-        headers: { Accept: 'application/json' },
+        headers,
       },
       (response) => {
         const chunks = [];
@@ -79,6 +79,29 @@ function getJson(port, pathWithQuery) {
     request.end();
   });
 }
+
+test('loopback Gateway rejects hostile Host and Origin headers on HTTP endpoints', async () => {
+  const { server, ownershipDir } = await createGateway();
+  try {
+    const badHost = await getJson(server.getPort(), '/mcp', { Host: 'attacker.example', Accept: 'application/json' });
+    assert.equal(badHost.statusCode, 403);
+    const badOrigin = await getJson(server.getPort(), '/mcp', {
+      Host: '127.0.0.1:' + server.getPort(),
+      Origin: 'https://attacker.example',
+      Accept: 'application/json',
+    });
+    assert.equal(badOrigin.statusCode, 403);
+    const good = await getJson(server.getPort(), '/mcp', {
+      Host: 'localhost:' + server.getPort(),
+      Origin: 'http://localhost:3000',
+      Accept: 'application/json',
+    });
+    assert.equal(good.statusCode, 200);
+  } finally {
+    await server.stop();
+    fs.rmSync(ownershipDir, { recursive: true, force: true });
+  }
+});
 
 async function createGateway(overrides = {}) {
   const ownershipDir = createTempDir();

@@ -41,7 +41,8 @@
     "scene.js",
     "server.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
     "access": "public"
