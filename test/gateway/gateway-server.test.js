@@ -97,6 +97,18 @@ test('loopback Gateway rejects hostile Host and Origin headers on HTTP endpoints
       Accept: 'application/json',
     });
     assert.equal(good.statusCode, 200);
+    const fileOrigin = await getJson(server.getPort(), '/mcp', {
+      Host: '127.0.0.1:' + server.getPort(),
+      Origin: 'file://',
+      Accept: 'application/json',
+    });
+    assert.equal(fileOrigin.statusCode, 200);
+    const nullOrigin = await getJson(server.getPort(), '/mcp', {
+      Host: '127.0.0.1:' + server.getPort(),
+      Origin: 'null',
+      Accept: 'application/json',
+    });
+    assert.equal(nullOrigin.statusCode, 403);
   } finally {
     await server.stop();
     fs.rmSync(ownershipDir, { recursive: true, force: true });

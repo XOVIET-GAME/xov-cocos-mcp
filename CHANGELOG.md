@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moved WebSocket authentication token from HTTP query parameters to the WebSocket subprotocol (`bearer.<token>`) to prevent credentials from leaking into proxy logs, web server access logs, and process monitors.
 - Switched token verification to constant-time comparison (`crypto.timingSafeEqual`) to mitigate timing side-channel attacks against authentication.
 - Enforced strict Origin and Host header validation on WebSocket upgrades and HTTP control endpoints to protect against DNS rebinding and cross-origin WebSocket hijacking.
+  Local Electron renderers (`Origin: file://`) and requests without an Origin remain allowed.
 
 ### Added
 - Added `writeFileAtomic` helper in `lib/atomic-file.js` creating temporary files with `O_EXCL` (`wx`), fsyncing, and atomically renaming with strict `0600` permissions.
