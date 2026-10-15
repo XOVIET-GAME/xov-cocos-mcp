@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Update check no longer reports an error when the repository has no published release (HTTP 404).
+- Gateway `serverInfo.version` now follows `package.json` instead of a hard-coded `0.4.5`.
+- Gateway `tools/call` results only carry object `structuredContent` (JSON strings are parsed, other values dropped), as MCP requires.
+- Node WebSocket client fallback so Cocos Creator 3.8.x (no global `WebSocket`) can forward tools through the Gateway.
+
 ### Security
 - Moved WebSocket authentication token from HTTP query parameters to the WebSocket subprotocol (`bearer.<token>`) to prevent credentials from leaking into proxy logs, web server access logs, and process monitors.
 - Switched token verification to constant-time comparison (`crypto.timingSafeEqual`) to mitigate timing side-channel attacks against authentication.
