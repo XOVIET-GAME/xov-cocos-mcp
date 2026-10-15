@@ -194,7 +194,7 @@ class ExtensionService {
       ? globalThis.WebSocket
       : globalThis.window && typeof globalThis.window.WebSocket === 'function'
         ? globalThis.window.WebSocket
-        : null;
+        : require('./lib/gateway/ws-client').NodeWebSocket;
     const wsAvailable = Boolean(webSocketCtor);
     const authToken = process.env.COCOS_GATEWAY_AUTH_TOKEN || '';
     const transport = wsAvailable
